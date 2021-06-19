@@ -1,0 +1,69 @@
+version: "3.8"
+
+services:
+  db:
+    image: postgres:12
+    container_name: postgres_db_poetry
+    restart: always
+    volumes:
+      - postgres_data:/var/lib/postgresql/data/
+      - ./sql:/sql/
+    env_file:
+      - ./.env
+    ports:
+      - 5434:5432
+  redis:
+    image: redis:alpine
+    container_name: redis_poetry
+  web:
+    build: .
+    container_name: django_poetry
+    command: bash -c "python manage.py runserver 0.0.0.0:8001"
+    volumes:
+      - .:/code
+    ports:
+      - 8001:8000
+    environment:
+      - DJANGO_DEBUG='True'
+    env_file:
+      - ./.env
+    depends_on:
+      - db
+      - redis
+    entrypoint: /entrypoint.sh
+  bot:
+    build: .
+    container_name: tg_bot_poetry
+    command: python run_pooling.py
+    volumes:
+      - .:/code
+    env_file:
+      - ./.env
+    depends_on:
+      - web
+  celery:
+    build: .
+    container_name: celery_poetry
+    command: celery -A dtb worker --loglevel=INFO
+    volumes:
+      - .:/code
+    env_file:
+      - ./.env
+    depends_on:
+      - redis
+      - web
+  celery-beat:
+    build: .
+    container_name: celery_beat_poetry
+    command: celery -A dtb beat --loglevel=INFO --scheduler django_celery_beat.schedulers:DatabaseScheduler
+    volumes:
+      - .:/code
+    env_file:
+      - ./.env
+    depends_on:
+      - redis
+      - celery
+      - web
+
+volumes:
+  postgres_data:
